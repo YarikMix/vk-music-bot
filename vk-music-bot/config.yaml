@@ -1,0 +1,6 @@
+group:
+  group_id: ""  # id группы
+  group_token: ""  # Токен группы
+user:
+  login: "" # Ваш логин
+  password: ""  # Ваш пароль
