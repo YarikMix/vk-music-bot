@@ -1,0 +1,3 @@
+pytils==0.3
+vk_api==11.9.1
+PyYAML==5.4.1
