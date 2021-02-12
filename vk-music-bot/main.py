@@ -15,35 +15,6 @@ popular_listening = []
 with open("config.yaml") as ymlFile:
     config = yaml.load(ymlFile.read(), Loader=yaml.Loader)
 
-def auth():
-    authorize = vk_api.VkApi(token=config["group"]["group_token"])
-    longpoll = VkBotLongPoll(
-        authorize,
-        group_id=config["group"]["group_id"]
-    )
-
-    bot = authorize.get_api()
-
-    vk_session = vk_api.VkApi(
-        login=config["user"]["login"],
-        password=config["user"]["password"]
-    )
-
-    try:
-        vk_session.auth()
-        vk = vk_session.get_api()
-        vk_audio = audio.VkAudio(vk_session)
-
-        return {
-            "longpoll": longpoll,
-            "bot": bot,
-            "vk": vk,
-            "vk_audio": vk_audio
-        }
-    except Exception as e:
-        print("Не получилось авторизоваться. Неверный логин или пароль.")
-        exit()
-
 
 class Audio(object):
     def __init__(self, bot, vk_audio):
@@ -93,10 +64,14 @@ class Audio(object):
             )
 
     def get_user_albums(self, chat_id, user_id):
-        user = self.bot.users.get(user_ids=user_id)[0]
+        user = self.bot.users.get(
+            user_ids=user_id,
+            fields="sex"
+        )[0]
         decline_username = decline(
             first_name=user["first_name"],
-            last_name=user["last_name"]
+            last_name=user["last_name"],
+            sex=user["sex"]
         )
         if user["is_closed"]:
             # Профиль закрыт
@@ -152,12 +127,12 @@ class Bot(object):
     def check_message(self, received_message, chat_id):
         if received_message[:7] == "!поиск ":
             query = received_message[7:]
-            Audio.get_audio(chat_id, query=query)
+            bot_audio.get_audio(chat_id, query=query)
         elif received_message == "!популярное":
-            Audio.get_popular_audio(chat_id)
+            bot_audio.get_popular_audio(chat_id)
         elif received_message[:10] == "!аудио [id":
             user_id = int(received_message[10:19])
-            self.is_album_select = Audio.get_user_albums(chat_id, user_id)
+            self.is_album_select = bot_audio.get_user_albums(chat_id, user_id)
         elif received_message[:12] == "!аудио [club":
             self.bot.messages.send(
                 chat_id=chat_id,
@@ -168,25 +143,48 @@ class Bot(object):
     def run(self):
         print("Начинаю мониторинг сообщений...")
 
-        """Отслеживаем каждое событие в беседе."""
-        for event in self.longpoll.listen():
-            if event.type == VkBotEventType.MESSAGE_NEW and event.from_chat and event.message.get("text") != "":
-                received_message = event.message.get("text").lower()
-                self.from_id = event.message.get("from_id")
-                self.check_message(received_message, event.chat_id)
+        while True:
+            try:
+                """Отслеживаем каждое событие в беседе."""
+                for event in self.longpoll.listen():
+                    if event.type == VkBotEventType.MESSAGE_NEW and event.from_chat and event.message.get("text") != "":
+                        received_message = event.message.get("text").lower()
+                        self.check_message(received_message, event.chat_id)
+            except Exception as e:
+                print(e)
 
 
 if __name__ == "__main__":
-    auth_data = auth()
-
-    VkBot = Bot(
-        longpoll=auth_data["longpoll"],
-        bot=auth_data["bot"]
+    authorize = vk_api.VkApi(token=config["group"]["group_token"])
+    longpoll = VkBotLongPoll(
+        authorize,
+        group_id=config["group"]["group_id"]
     )
 
-    Audio = Audio(
-        bot=auth_data["bot"],
-        vk_audio=auth_data["vk_audio"]
+    bot = authorize.get_api()
+
+    vk_session = vk_api.VkApi(
+        login=config["user"]["login"],
+        password=config["user"]["password"]
     )
 
-    VkBot.run()
+    try:
+        vk_session.auth()
+        vk = vk_session.get_api()
+        vk_audio = audio.VkAudio(vk_session)
+
+        vkbot = Bot(
+            longpoll=longpoll,
+            bot=bot
+        )
+
+        bot_audio = Audio(
+            bot=bot,
+            vk_audio=vk_audio
+        )
+
+        vkbot.run()
+
+    except Exception as e:
+        print("Не получилось авторизоваться. Неверный логин или пароль.")
+        exit()
