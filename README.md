@@ -4,9 +4,9 @@
 
 * Шазам <голосове сообщение>
 
-![](https://github.com/YarikMix/vk-music-bot/raw/main/images/command_1.png)<br>
+![](https://github.com/YarikMix/vk-shazam-bot/raw/main/images/command_1.png)<br>
 
 * !альбомы @<имя пользователя>
 
-![](https://github.com/YarikMix/vk-music-bot/raw/main/images/command_2.png)<br>
+![](https://github.com/YarikMix/vk-shazam-bot/raw/main/images/command_2.png)<br>
 Отправляет в беседу список с названиями альбомов пользователя
