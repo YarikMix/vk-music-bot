@@ -1,3 +1,7 @@
-pytils==0.3
+requests==2.25.1
+pytrovich==0.0.2
 vk_api==11.9.1
+pytils==0.3
+pyacrcloud==1.0.1
+acrcloud==14.10.2020
 PyYAML==5.4.1

@@ -2,5 +2,9 @@ group:
   group_id: ""  # id группы
   group_token: ""  # Токен группы
 user:
-  login: "" # Ваш логин
+  login: ""  # Ваш логин
   password: ""  # Ваш пароль
+ACRCloud:
+  host: ""
+  access_key: ""
+  secret_key: ""

@@ -1,13 +1,12 @@
-## Музыкальный бот для беседы Вконтакте
+<h1 align="center">Бот для распознавания музыки из голосовых сообщений</h1>
 
-### Команды
+## Команды
 
-* !поиск <Название песни>
+* Шазам <голосове сообщение>
 
-![Иллюстрация к проекту](https://github.com/YarikMix/vk-music-bot/raw/main/images/command_1.png)<br>
-Отправляет в беседу найденную песню
+![](https://github.com/YarikMix/vk-music-bot/raw/main/images/command_1.png)<br>
 
-* !аудио @<Имя пользователя>
+* !альбомы @<имя пользователя>
 
-![Иллюстрация к проекту](https://github.com/YarikMix/vk-music-bot/raw/main/images/command_2.png)<br>
+![](https://github.com/YarikMix/vk-music-bot/raw/main/images/command_2.png)<br>
 Отправляет в беседу список с названиями альбомов пользователя

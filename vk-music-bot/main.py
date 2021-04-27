@@ -1,95 +1,97 @@
-# -*- coding: utf-8 -*-
+import re
+import logging
 import random
+from pathlib import Path
 
+import yaml
+import requests
 import vk_api
 from vk_api import audio
 from vk_api.bot_longpoll import VkBotLongPoll, VkBotEventType
 from vk_api.utils import get_random_id
-import yaml
 from pytils import numeral
 
+from recognizer import Recognizer
 from functions import decline
 
-popular_listening = []
 
-with open("config.yaml") as ymlFile:
+BASE_DIR = Path(__file__).resolve().parent
+CONFIG_PATH = BASE_DIR.joinpath("config.yaml")
+VK_CONFIG_PATH = BASE_DIR.joinpath("vk_config.v2.json")
+
+with open(CONFIG_PATH, encoding="utf-8") as ymlFile:
     config = yaml.load(ymlFile.read(), Loader=yaml.Loader)
 
+logging.basicConfig(
+    format='%(asctime)s - %(message)s',
+    datefmt='%d-%b-%y %H:%M:%S',
+    level=logging.INFO
+)
 
-class Audio(object):
-    def __init__(self, bot, vk_audio):
-        self.bot = bot
-        self.vk_audio = vk_audio
+logger = logging.getLogger('vk_api')
+logger.disabled = True
 
-    def get_audio(self, chat_id, query):
-        r = self.vk_audio.search(
-            q=query,
-            count=1
-        )
-        try:
-            song = [song for song in r][0]
-            attachment = "audio{}_{}".format(song.get("owner_id"), song.get("id"))
-            self.bot.messages.send(
+
+class Utils:
+    def shazam(self, url, chat_id):
+        song = recognizer.recognize(url)
+
+        if song:
+            self.get_audio(query=song, chat_id=chat_id)
+        else:
+            bot.messages.send(
                 chat_id=chat_id,
-                message="",
-                attachment=attachment,
+                message="Не удалось распознать песню :(",
                 random_id=get_random_id()
             )
-        except:
-            self.bot.messages.send(
+
+    def get_audio(self, query, chat_id):
+        try:
+            response = vk_audio.search(q=query, count=1)
+            song = list(response)[0]
+            attachment = "audio{}_{}".format(song.get("owner_id"), song.get("id"))
+            bot.messages.send(
+                attachment=attachment,
                 chat_id=chat_id,
-                message="Аудиозаписи не найдены",
+                random_id=get_random_id()
+            )
+        except Exception as e:
+            bot.messages.send(
+                message="Аудиозаписи не найдены :(",
+                chat_id=chat_id,
                 random_id=get_random_id()
             )
 
     def get_popular_audio(self, chat_id):
-        r = self.vk_audio.get_popular_iter(
-            offset=random.randint(1, 50)
+        popular_songs = list(vk_audio.get_popular_iter())
+        song = random.choice(popular_songs)
+        attachment = "audio{}_{}".format(song["owner_id"], song["id"])
+        bot.messages.send(
+            attachment=attachment,
+            chat_id=chat_id,
+            random_id=get_random_id()
         )
-        try:
-            for song in r:
-                attachment = "audio{}_{}".format(song.get("owner_id"), song.get("id"))
-                self.bot.messages.send(
-                    chat_id=chat_id,
-                    message="",
-                    attachment=attachment,
-                    random_id=get_random_id()
-                )
-                break
-        except:
-            self.bot.messages.send(
-                chat_id=chat_id,
-                message="Аудиозаписи не найдены",
-                random_id=get_random_id()
-            )
 
-    def get_user_albums(self, chat_id, user_id):
-        user = self.bot.users.get(
+    def get_user_albums(self, user_id, chat_id):
+        user_info = bot.users.get(
             user_ids=user_id,
             fields="sex"
         )[0]
+
         decline_username = decline(
-            first_name=user["first_name"],
-            last_name=user["last_name"],
-            sex=user["sex"]
+            first_name=user_info["first_name"],
+            last_name=user_info["last_name"],
+            sex=user_info["sex"]
         )
-        if user["is_closed"]:
+
+        if user_info["is_closed"]:
             # Профиль закрыт
-            self.bot.messages.send(
-                chat_id=chat_id,
-                message="Профиль [id{}|{}] закрыт❌".format(
-                    user_id,
-                    decline_username
-                ),
-                random_id=get_random_id()
-            )
+            message = "Профиль [id{}|{}] закрыт❌".format(user_id, decline_username)
         else:
             # Профиль открыт
-            user_albums = self.vk_audio.get_albums(
-                owner_id=user_id
-            )
+            user_albums = vk_audio.get_albums(owner_id=user_id)
             if len(user_albums) != 0:
-                # Хотя бы один альбом есть
+                # Есть хотя бы один альбом
                 message = "У [id{}|{}] {}\n".format(
                     user_id,
                     decline_username,
@@ -102,56 +104,52 @@ class Audio(object):
                         album["title"]
                     )
                     album_number += 1
-
-                self.bot.messages.send(
-                    chat_id=chat_id,
-                    message=message,
-                    random_id=get_random_id()
-                )
             else:
-                self.bot.messages.send(
-                    chat_id=chat_id,
-                    message="У [id{}|{}] нет альбомов".format(
-                        user_id,
-                        decline_username
-                    ),
-                    random_id=get_random_id()
-                )
+                message = "У [id{}|{}] нет альбомов".format(user_id, decline_username)
+
+        bot.messages.send(
+            chat_id=chat_id,
+            message=message,
+            random_id=get_random_id()
+        )
 
 
-class Bot(object):
-    def __init__(self, longpoll, bot):
-        self.longpoll = longpoll
-        self.bot = bot
+class Bot:
+    def check_message(self, message, chat_id, event):
+        if message == "шазам":
+            if event.message.fwd_messages:
+                if len(event.message.fwd_messages[0]["attachments"]) > 0:
+                    # Проверяем, чтобы в пересланном сообщении было голосовое сообщение
+                    audio_url = event.message["fwd_messages"][0]["attachments"][0]["audio_message"]["link_mp3"]
+                    utils.shazam(audio_url, chat_id)
+            elif "reply_message" in event.message:
+                if len(event.message.reply_message["attachments"]) > 0:
+                    # Проверяем, чтобы в пересланном сообщении было голосовое сообщение
+                    audio_url = event.message.reply_message["attachments"][0]["audio_message"]["link_mp3"]
+                    utils.shazam(audio_url, chat_id)
+        elif message[:7] == "!поиск ":
+            query = message[7:]
+            utils.get_audio(query=query, chat_id=chat_id)
+        elif message == "!популярное":
+            utils.get_popular_audio(chat_id)
+        elif re.match(r"!альбомы \[id\d+\|(@|)\w+\]", message):
+            user_id = int(re.findall(r"!альбомы \[id(\d+)\|(@|)\w+\]", message)[0][0])
+            self.is_album_select = utils.get_user_albums(user_id, chat_id)
 
-    def check_message(self, received_message, chat_id):
-        if received_message[:7] == "!поиск ":
-            query = received_message[7:]
-            bot_audio.get_audio(chat_id, query=query)
-        elif received_message == "!популярное":
-            bot_audio.get_popular_audio(chat_id)
-        elif received_message[:10] == "!аудио [id":
-            user_id = int(received_message[10:19])
-            self.is_album_select = bot_audio.get_user_albums(chat_id, user_id)
-        elif received_message[:12] == "!аудио [club":
-            self.bot.messages.send(
-                chat_id=chat_id,
-                message="Данная команда не работает с группами",
-                random_id=get_random_id()
-            )
-
-    def run(self):
-        print("Начинаю мониторинг сообщений...")
-
+    def listen(self):
         while True:
             try:
-                """Отслеживаем каждое событие в беседе."""
-                for event in self.longpoll.listen():
-                    if event.type == VkBotEventType.MESSAGE_NEW and event.from_chat and event.message.get("text") != "":
-                        received_message = event.message.get("text").lower()
-                        self.check_message(received_message, event.chat_id)
-            except Exception as e:
+                for event in longpoll.listen():
+                    if event.type == VkBotEventType.MESSAGE_NEW and event.from_chat:
+                        message = event.message.text.lower()
+                        self.check_message(message=message, chat_id=event.chat_id, event=event)
+            except (requests.exceptions.ReadTimeout, requests.exceptions.ConnectionError) as e:
                 print(e)
+                logging.info("Перезапуск бота")
+
+    def run(self):
+        logging.info("Бот запущен")
+        self.listen()
 
 
 if __name__ == "__main__":
@@ -168,23 +166,18 @@ if __name__ == "__main__":
         password=config["user"]["password"]
     )
 
-    try:
-        vk_session.auth()
-        vk = vk_session.get_api()
-        vk_audio = audio.VkAudio(vk_session)
+    vk_session.auth()
+    vk = vk_session.get_api()
+    vk_audio = audio.VkAudio(vk_session)
 
-        vkbot = Bot(
-            longpoll=longpoll,
-            bot=bot
-        )
+    VK_CONFIG_PATH.unlink()
 
-        bot_audio = Audio(
-            bot=bot,
-            vk_audio=vk_audio
-        )
+    recognizer = Recognizer()
+    recognizer.auth(config)
 
-        vkbot.run()
+    vkbot = Bot()
+    utils = Utils()
+    
+    logging.info("Авторизация прошла успешно")
 
-    except Exception as e:
-        print("Не получилось авторизоваться. Неверный логин или пароль.")
-        exit()
+    vkbot.run()
